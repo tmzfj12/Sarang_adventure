@@ -36,6 +36,13 @@ public class PlayerController : MonoBehaviour
         // Update animator parameters
         animator.SetFloat("Speed", Mathf.Abs(moveInput));
         animator.SetBool("isGrounded", isGrounded);
+        animator.SetBool("isRunning", Mathf.Abs(moveInput) > 0);
+
+        // Handle jump
+        if (Input.GetButtonDown("Jump") && isGrounded)
+        {
+            rb.linearVelocity = Vector2.up * jumpForce;
+        }
 
         // Handle lie down animation
         if (Input.GetKey(KeyCode.DownArrow))
@@ -46,23 +53,6 @@ public class PlayerController : MonoBehaviour
         {
             animator.SetBool("isLieDown", false);
         }
-
-        // Debug info
-        Debug.Log($"IsGrounded: {isGrounded}, Speed: {Mathf.Abs(moveInput)}, Position: {transform.position}");
-
-        // Get horizontal input
-        moveInput = Input.GetAxisRaw("Horizontal");
-
-        // Jump input
-        if (Input.GetButtonDown("Jump") && isGrounded)
-        {
-            rb.linearVelocity = Vector2.up * jumpForce;
-            animator?.SetTrigger("Jump");
-        }
-
-        // Update animations
-        animator?.SetFloat("Speed", Mathf.Abs(moveInput));
-        animator?.SetBool("IsGrounded", isGrounded);
 
         // Flip character based on movement direction
         if (moveInput > 0 && !facingRight)

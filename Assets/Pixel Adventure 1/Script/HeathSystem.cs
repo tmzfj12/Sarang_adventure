@@ -9,13 +9,14 @@ public class HealthSystem : MonoBehaviour
     public int currentHealth;
 
     [Header("UI Elements")]
-    public Image[] healthIcons;
-    public TextMeshProUGUI stageText;
+    public GameObject[] healthImages;  // 딸기 이미지 배열
+    public TextMeshProUGUI stageText; // 스테이지 표시 텍스트
 
     [Header("Power-up Settings")]
     public bool canAttack = false;
     public float attackDuration = 10f;
     public GameObject attackCollider;
+
     private PlayerController playerController;
     private float powerUpTimer;
 
@@ -27,11 +28,15 @@ public class HealthSystem : MonoBehaviour
 
         if (attackCollider != null)
             attackCollider.SetActive(false);
+
+        // 초기 스테이지 텍스트 설정
+        if (stageText != null)
+            stageText.text = "Stage 1";
     }
 
     void Update()
     {
-        // Handle attack input when powered up
+        // 공격 파워업 상태 관리
         if (canAttack)
         {
             if (Input.GetKeyDown(KeyCode.LeftControl))
@@ -39,13 +44,25 @@ public class HealthSystem : MonoBehaviour
                 Attack();
             }
 
-            // Power-up timer
             powerUpTimer -= Time.deltaTime;
             if (powerUpTimer <= 0)
             {
                 canAttack = false;
                 if (attackCollider != null)
                     attackCollider.SetActive(false);
+            }
+        }
+    }
+
+    private void UpdateHealthUI()
+    {
+        // 딸기 이미지로 체력 표시
+        if (healthImages != null)
+        {
+            for (int i = 0; i < healthImages.Length; i++)
+            {
+                if (healthImages[i] != null)
+                    healthImages[i].SetActive(i < currentHealth);
             }
         }
     }
@@ -57,6 +74,10 @@ public class HealthSystem : MonoBehaviour
             currentHealth = 0;
 
         UpdateHealthUI();
+
+        // 플레이어 피격 애니메이션 실행
+        if (playerController != null)
+            playerController.TakeDamage();
 
         if (currentHealth <= 0)
         {
@@ -83,7 +104,6 @@ public class HealthSystem : MonoBehaviour
     {
         if (attackCollider != null)
         {
-            // Activate attack collider briefly
             StartCoroutine(PerformAttack());
         }
     }
@@ -95,23 +115,17 @@ public class HealthSystem : MonoBehaviour
         attackCollider.SetActive(false);
     }
 
-    private void UpdateHealthUI()
-    {
-        for (int i = 0; i < healthIcons.Length; i++)
-        {
-            if (i < currentHealth)
-                healthIcons[i].enabled = true;
-            else
-                healthIcons[i].enabled = false;
-        }
-    }
-
     private void GameOver()
     {
-        // Implement game over logic here
         Debug.Log("Game Over");
-        // You might want to reload the level or show a game over screen
+        // 게임오버 시 필요한 추가 로직
+        // 예: 게임오버 UI 표시, 재시작 옵션 제공 등
     }
 
+    // 스테이지 변경 시 호출
+    public void UpdateStageText(int stageNumber)
+    {
+        if (stageText != null)
+            stageText.text = $"Stage {stageNumber}";
+    }
 }
-

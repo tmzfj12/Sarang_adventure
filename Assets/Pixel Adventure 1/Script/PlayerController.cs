@@ -7,21 +7,25 @@ public class PlayerController : MonoBehaviour
     public float moveSpeed = 5f;
     public float jumpForce = 12f;
     public float groundCheckRadius = 0.2f;
+    public float wallCheckDistance = 0.5f;
     public LayerMask groundLayer;
+    public LayerMask wallLayer;
     public Transform groundCheck;
 
     [Header("Idle Settings")]
-    public float idleTimeToSit = 5f; // 앉기 전까지의 대기 시간
+    public float idleTimeToSit = 5f;
 
     private Rigidbody2D rb;
     private Animator animator;
     private SpriteRenderer spriteRenderer;
+    private BoxCollider2D boxCollider;
     private bool facingRight = true;
     private float moveInput;
     private bool isGrounded;
     private float idleTimer = 0f;
     private bool isHurt = false;
     private bool isAttacking = false;
+    private bool isSitting = false;
 
     // 애니메이션 파라미터 이름들
     private readonly string SPEED_PARAM = "Speed";
@@ -29,6 +33,7 @@ public class PlayerController : MonoBehaviour
     private readonly string IS_RUNNING_PARAM = "isRunning";
     private readonly string IS_HURT_PARAM = "isHurt";
     private readonly string IS_LIE_DOWN_PARAM = "isLieDown";
+    private readonly string SITTING_PARAM = "Sitting";
     private readonly string JUMP_TRIGGER = "Jump";
     private readonly string ATTACK_TRIGGER = "Attack";
 
@@ -37,6 +42,7 @@ public class PlayerController : MonoBehaviour
         rb = GetComponent<Rigidbody2D>();
         animator = GetComponent<Animator>();
         spriteRenderer = GetComponent<SpriteRenderer>();
+        boxCollider = GetComponent<BoxCollider2D>();
 
         if (rb != null)
         {
@@ -47,19 +53,18 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
+        // Get horizontal input
+        moveInput = Input.GetAxisRaw("Horizontal");
+
         // Ground check
         isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, groundLayer);
         animator.SetBool(IS_GROUNDED_PARAM, isGrounded);
 
-        // Get horizontal input
-        moveInput = Input.GetAxisRaw("Horizontal");
-
-        // Handle movement and animations
-        HandleMovement();
+        // Handle animations
         HandleAnimations();
 
         // Handle jump
-        if (Input.GetButtonDown("Jump") && isGrounded && !IsLieDown())
+        if (Input.GetButtonDown("Jump") && isGrounded && !isSitting && !IsLieDown())
         {
             Jump();
         }
@@ -74,48 +79,94 @@ public class PlayerController : MonoBehaviour
         HandleLieDown();
     }
 
+    void FixedUpdate()
+    {
+        HandleMovement();
+    }
+
     void HandleMovement()
     {
-        if (!IsLieDown())
+        if (!IsLieDown() && !isSitting)
         {
-            float moveVelocity = moveInput * moveSpeed;
-            rb.linearVelocity = new Vector2(moveVelocity, rb.linearVelocity.y);
+            bool isWallAhead = IsWallAhead();
 
-            // Flip character based on movement direction
-            if (moveInput > 0 && !facingRight)
-                Flip();
-            else if (moveInput < 0 && facingRight)
-                Flip();
+            if (!isWallAhead)
+            {
+                float moveVelocity = moveInput * moveSpeed;
+                rb.linearVelocity = new Vector2(moveVelocity, rb.linearVelocity.y);
+
+                // Flip character based on movement direction
+                if (moveInput > 0 && !facingRight)
+                    Flip();
+                else if (moveInput < 0 && facingRight)
+                    Flip();
+            }
+            else
+            {
+                // 벽에 닿았을 때 수평 속도를 0으로
+                rb.linearVelocity = new Vector2(0, rb.linearVelocity.y);
+            }
         }
         else
         {
-            // When lying down, stop horizontal movement
             rb.linearVelocity = new Vector2(0, rb.linearVelocity.y);
         }
     }
 
+    bool IsWallAhead()
+    {
+        if (Mathf.Abs(moveInput) < 0.1f) return false;
+
+        // 이동 방향에 따라 레이캐스트 방향 결정
+        Vector2 direction = (moveInput > 0) ? Vector2.right : Vector2.left;
+
+        Vector2[] startPositions = new Vector2[]
+        {
+        transform.position + Vector3.up * 0.2f,    // 상단
+        transform.position,                        // 중간
+        transform.position + Vector3.down * 0.2f   // 하단
+        };
+
+        foreach (Vector2 startPos in startPositions)
+        {
+            RaycastHit2D hit = Physics2D.Raycast(startPos, direction, wallCheckDistance, wallLayer);
+
+            // 디버그 시각화
+            Debug.DrawRay(startPos, direction * wallCheckDistance, Color.red, 0.1f);
+            Debug.Log($"Checking direction: {direction}, Position: {startPos}, Hit: {(hit.collider != null ? hit.collider.name : "Nothing")}");
+
+            if (hit.collider != null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     void HandleAnimations()
     {
-        // Set speed parameter
         animator.SetFloat(SPEED_PARAM, Mathf.Abs(moveInput));
-
-        // Handle running animation
         bool isRunning = Mathf.Abs(moveInput) > 0.1f;
         animator.SetBool(IS_RUNNING_PARAM, isRunning);
 
-        // Handle idle timer for sitting animation
         if (Mathf.Abs(moveInput) < 0.1f && isGrounded && !IsLieDown())
         {
             idleTimer += Time.deltaTime;
-            if (idleTimer >= idleTimeToSit)
+            if (idleTimer >= idleTimeToSit && !isSitting)
             {
-                // Transition to sitting will be handled by animator
-                idleTimer = 0f;
+                isSitting = true;
+                animator.SetBool(SITTING_PARAM, true);
             }
         }
         else
         {
             idleTimer = 0f;
+            if (isSitting)
+            {
+                isSitting = false;
+                animator.SetBool(SITTING_PARAM, false);
+            }
         }
     }
 
@@ -135,13 +186,21 @@ public class PlayerController : MonoBehaviour
         rb.linearVelocity = Vector2.up * jumpForce;
         animator.SetTrigger(JUMP_TRIGGER);
         idleTimer = 0f;
+        if (isSitting)
+        {
+            isSitting = false;
+            animator.SetBool(SITTING_PARAM, false);
+        }
     }
 
     void Attack()
     {
-        isAttacking = true;
-        animator.SetTrigger(ATTACK_TRIGGER);
-        Invoke(nameof(ResetAttack), 0.5f);
+        if (!isSitting && !IsLieDown())
+        {
+            isAttacking = true;
+            animator.SetTrigger(ATTACK_TRIGGER);
+            Invoke(nameof(ResetAttack), 0.5f);
+        }
     }
 
     void ResetAttack()
@@ -176,10 +235,7 @@ public class PlayerController : MonoBehaviour
     {
         isHurt = true;
         animator.SetBool(IS_HURT_PARAM, true);
-
-        // 피격 시 잠시 무적 및 넉백 효과
         yield return new WaitForSeconds(0.5f);
-
         isHurt = false;
         animator.SetBool(IS_HURT_PARAM, false);
     }
@@ -188,27 +244,23 @@ public class PlayerController : MonoBehaviour
     {
         if (groundCheck == null) return;
 
+        // Ground check visualization
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(groundCheck.position, groundCheckRadius);
-    }
 
-    private void OnCollisionEnter2D(Collision2D collision)
-    {
-        // Ground 레이어와의 충돌 확인
-        if (((1 << collision.gameObject.layer) & groundLayer) != 0)
+        // Wall check visualization
+        Gizmos.color = Color.red;
+        Vector2 direction = facingRight ? Vector2.right : Vector2.left;
+        Vector2[] startPositions = new Vector2[]
         {
-            isGrounded = true;
-            animator.SetBool(IS_GROUNDED_PARAM, true);
-        }
-    }
+            transform.position + Vector3.up * 0.5f,
+            transform.position,
+            transform.position + Vector3.down * 0.5f
+        };
 
-    private void OnCollisionExit2D(Collision2D collision)
-    {
-        // Ground 레이어와의 충돌 해제 확인
-        if (((1 << collision.gameObject.layer) & groundLayer) != 0)
+        foreach (Vector2 startPos in startPositions)
         {
-            isGrounded = false;
-            animator.SetBool(IS_GROUNDED_PARAM, false);
+            Gizmos.DrawLine(startPos, startPos + direction * wallCheckDistance);
         }
     }
 }

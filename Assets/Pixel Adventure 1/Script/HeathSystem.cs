@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using System.Collections;
 
 public class HealthSystem : MonoBehaviour
 {
@@ -9,54 +10,70 @@ public class HealthSystem : MonoBehaviour
     public int currentHealth;
 
     [Header("UI Elements")]
-    public GameObject[] healthImages;  // µþ±â ÀÌ¹ÌÁö ¹è¿­
-    public TextMeshProUGUI stageText; // ½ºÅ×ÀÌÁö Ç¥½Ã ÅØ½ºÆ®
+    public GameObject[] healthImages;
+    public TextMeshProUGUI stageText;
 
-    [Header("Power-up Settings")]
+    [Header("Attack Settings")]
     public bool canAttack = false;
     public float attackDuration = 10f;
-    public GameObject attackCollider;
+    public GameObject projectilePrefab;
+    public Transform firePoint;
+    public float attackCooldown = 0.5f;
 
+    [Header("Hurt Settings")]
+    public float knockbackForce = 5f;
+    public float invulnerabilityDuration = 1f;
+    public int invulnerabilityFlashes = 3;
+
+    private float nextAttackTime = 0f;
     private PlayerController playerController;
+    private Animator animator;
     private float powerUpTimer;
+    private bool isInvulnerable = false;
+    private SpriteRenderer spriteRenderer;
+    private Rigidbody2D rb;
+
+    // ï¿½Ö´Ï¸ï¿½ï¿½Ì¼ï¿½ ï¿½Ä¶ï¿½ï¿½ï¿½ï¿½
+    private readonly string IS_HURT_PARAM = "isHurt";
+    private readonly string ATTACK_TRIGGER = "Attack";
 
     void Start()
     {
         currentHealth = maxHealth;
         playerController = GetComponent<PlayerController>();
+        animator = GetComponent<Animator>();
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        rb = GetComponent<Rigidbody2D>();
         UpdateHealthUI();
 
-        if (attackCollider != null)
-            attackCollider.SetActive(false);
-
-        // ÃÊ±â ½ºÅ×ÀÌÁö ÅØ½ºÆ® ¼³Á¤
+        // ï¿½Ê±ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ø½ï¿½Æ® ï¿½ï¿½ï¿½ï¿½
         if (stageText != null)
             stageText.text = "Stage 1";
     }
 
     void Update()
     {
-        // °ø°Ý ÆÄ¿ö¾÷ »óÅÂ °ü¸®
+        // ï¿½ï¿½ï¿½ï¿½ ï¿½Ä¿ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
         if (canAttack)
         {
-            if (Input.GetKeyDown(KeyCode.LeftControl))
+            // ï¿½ï¿½ï¿½ï¿½ ï¿½Ô·ï¿½ Ã¼Å© ï¿½ï¿½ ï¿½ï¿½Ù¿ï¿½ È®ï¿½ï¿½
+            if (Input.GetKeyDown(KeyCode.LeftControl) && Time.time >= nextAttackTime)
             {
                 Attack();
+                nextAttackTime = Time.time + attackCooldown;
             }
 
             powerUpTimer -= Time.deltaTime;
             if (powerUpTimer <= 0)
             {
                 canAttack = false;
-                if (attackCollider != null)
-                    attackCollider.SetActive(false);
             }
         }
     }
 
+    // Ã¼ï¿½ï¿½ UI ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ®
     private void UpdateHealthUI()
     {
-        // µþ±â ÀÌ¹ÌÁö·Î Ã¼·Â Ç¥½Ã
         if (healthImages != null)
         {
             for (int i = 0; i < healthImages.Length; i++)
@@ -67,17 +84,34 @@ public class HealthSystem : MonoBehaviour
         }
     }
 
-    public void TakeDamage(int damage)
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Þ±ï¿½ (ï¿½Ë¹ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ß°ï¿½)
+    public void TakeDamage(int damage, Vector2 knockbackDirection = default)
     {
+        // ï¿½Ì¹ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Â¸ï¿½ ï¿½ï¿½ï¿½ï¿½
+        if (isInvulnerable)
+            return;
+
         currentHealth -= damage;
         if (currentHealth < 0)
             currentHealth = 0;
 
         UpdateHealthUI();
 
-        // ÇÃ·¹ÀÌ¾î ÇÇ°Ý ¾Ö´Ï¸ÞÀÌ¼Ç ½ÇÇà
-        if (playerController != null)
-            playerController.TakeDamage();
+        // ï¿½Ç°ï¿½ ï¿½Ö´Ï¸ï¿½ï¿½Ì¼ï¿½
+        if (animator != null)
+        {
+            animator.SetBool(IS_HURT_PARAM, true);
+        }
+
+        // ï¿½Ë¹ï¿½ È¿ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+        if (rb != null && knockbackDirection != default)
+        {
+            rb.linearVelocity = Vector2.zero; // ï¿½ï¿½ï¿½ï¿½ ï¿½Óµï¿½ ï¿½Ê±ï¿½È­
+            rb.AddForce(knockbackDirection * knockbackForce, ForceMode2D.Impulse);
+        }
+
+        // ï¿½ï¿½ï¿½ï¿½ ï¿½Ã°ï¿½ È°ï¿½ï¿½È­
+        StartCoroutine(InvulnerabilityCoroutine());
 
         if (currentHealth <= 0)
         {
@@ -85,6 +119,37 @@ public class HealthSystem : MonoBehaviour
         }
     }
 
+    // ï¿½Ï½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Â¸ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ú·ï¿½Æ¾
+    private IEnumerator InvulnerabilityCoroutine()
+    {
+        isInvulnerable = true;
+
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ È¿ï¿½ï¿½ (ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½)
+        if (spriteRenderer != null)
+        {
+            for (int i = 0; i < invulnerabilityFlashes; i++)
+            {
+                spriteRenderer.color = new Color(1, 1, 1, 0.5f);
+                yield return new WaitForSeconds(invulnerabilityDuration / (invulnerabilityFlashes * 2));
+                spriteRenderer.color = Color.white;
+                yield return new WaitForSeconds(invulnerabilityDuration / (invulnerabilityFlashes * 2));
+            }
+        }
+        else
+        {
+            yield return new WaitForSeconds(invulnerabilityDuration);
+        }
+
+        isInvulnerable = false;
+
+        // ï¿½Ç°ï¿½ ï¿½Ö´Ï¸ï¿½ï¿½Ì¼ï¿½ ï¿½ï¿½ï¿½ï¿½
+        if (animator != null)
+        {
+            animator.SetBool(IS_HURT_PARAM, false);
+        }
+    }
+
+    // Ã¼ï¿½ï¿½ È¸ï¿½ï¿½
     public void Heal(int amount)
     {
         currentHealth += amount;
@@ -94,35 +159,53 @@ public class HealthSystem : MonoBehaviour
         UpdateHealthUI();
     }
 
+    // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ È°ï¿½ï¿½È­
     public void EnableAttack()
     {
         canAttack = true;
         powerUpTimer = attackDuration;
     }
 
+    // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
     private void Attack()
     {
-        if (attackCollider != null)
+        if (canAttack && projectilePrefab != null && firePoint != null)
         {
-            StartCoroutine(PerformAttack());
+            // ï¿½à°£ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ß°ï¿½ï¿½Ï¿ï¿½ ï¿½ï¿½ï¿½ï¿½
+            Vector2 spawnPosition = firePoint.position;
+            bool isFacingRight = playerController.facingRight;
+
+            // ï¿½ï¿½ï¿½â¿¡ ï¿½ï¿½ï¿½ï¿½ ï¿½à°£ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ß°ï¿½
+            if (isFacingRight)
+                spawnPosition.x += 0.3f;
+            else
+                spawnPosition.x -= 0.3f;
+
+            // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Ä¡ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Ã¼ ï¿½ï¿½ï¿½ï¿½
+            GameObject projectile = Instantiate(projectilePrefab, spawnPosition, Quaternion.identity);
+
+            // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+            Projectile projectileScript = projectile.GetComponent<Projectile>();
+            if (projectileScript != null)
+            {
+                projectileScript.Initialize(isFacingRight);
+            }
+
+            // ï¿½Ö´Ï¸ï¿½ï¿½Ì¼ï¿½ Æ®ï¿½ï¿½ï¿½ï¿½
+            if (animator != null)
+                animator.SetTrigger("Attack");
         }
     }
 
-    private System.Collections.IEnumerator PerformAttack()
-    {
-        attackCollider.SetActive(true);
-        yield return new WaitForSeconds(0.2f);
-        attackCollider.SetActive(false);
-    }
-
+    // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
     private void GameOver()
     {
         Debug.Log("Game Over");
-        // °ÔÀÓ¿À¹ö ½Ã ÇÊ¿äÇÑ Ãß°¡ ·ÎÁ÷
-        // ¿¹: °ÔÀÓ¿À¹ö UI Ç¥½Ã, Àç½ÃÀÛ ¿É¼Ç Á¦°ø µî
+        // ï¿½ï¿½ï¿½Ó¿ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½Ê¿ï¿½ï¿½ï¿½ ï¿½ß°ï¿½ ï¿½ï¿½ï¿½ï¿½
+        // ï¿½ï¿½: ï¿½ï¿½ï¿½Ó¿ï¿½ï¿½ï¿½ UI Ç¥ï¿½ï¿½, ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½É¼ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½
     }
 
-    // ½ºÅ×ÀÌÁö º¯°æ ½Ã È£Ãâ
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ È£ï¿½ï¿½
     public void UpdateStageText(int stageNumber)
     {
         if (stageText != null)

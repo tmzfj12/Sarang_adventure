@@ -19,7 +19,7 @@ public class PlayerController : MonoBehaviour
     private Animator animator;
     private SpriteRenderer spriteRenderer;
     private BoxCollider2D boxCollider;
-    private bool facingRight = true;
+    public bool facingRight = true;  // private에서 public으로 변경
     private float moveInput;
     private bool isGrounded;
     private float idleTimer = 0f;
@@ -63,8 +63,8 @@ public class PlayerController : MonoBehaviour
         // Handle animations
         HandleAnimations();
 
-        // Handle jump
-        if (Input.GetButtonDown("Jump") && isGrounded && !isSitting && !IsLieDown())
+        // Handle jump - 키를 Alt로 변경
+        if (Input.GetKey(KeyCode.LeftAlt) && isGrounded && !isSitting && !IsLieDown())
         {
             Jump();
         }
@@ -214,6 +214,15 @@ public class PlayerController : MonoBehaviour
         if (spriteRenderer != null)
         {
             spriteRenderer.flipX = !facingRight;
+
+            // FirePoint 위치 조정 (추가된 부분)
+            Transform firePoint = transform.Find("FirePoint");
+            if (firePoint != null)
+            {
+                Vector3 firePointPos = firePoint.localPosition;
+                firePointPos.x = Mathf.Abs(firePointPos.x) * (facingRight ? 1 : -1);
+                firePoint.localPosition = firePointPos;
+            }
         }
         else
         {
